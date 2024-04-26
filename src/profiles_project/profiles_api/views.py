@@ -2,10 +2,14 @@ from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .serializers import HelloSerializers, UserProfileSerializer
-from rest_framework import serializers, status, viewsets
+from rest_framework import serializers, status, viewsets, filters
 from .models import UserProfile
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.authtoken.serializers import AuthTokenSerializer
+from rest_framework.authtoken.views import ObtainAuthToken
 from . import permissions
+from django.db.models import Q
+
 
 class HelloApiView(APIView):
     """
@@ -101,5 +105,33 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     """
     serializer_class = UserProfileSerializer
     queryset = UserProfile.objects.all()
-    authentication_classes = (TokenAuthentication, )
-    permission_classes = (permissions.UpdateOwnProfile, )
+    # authentication_classes = (TokenAuthentication, )
+    # permission_classes = (permissions.UpdateOwnProfile, )
+    filter_backends = (filters.SearchFilter, )
+    search_fields = ('name', 'email',)
+
+    def filter_queryset(self, queryset):
+        """
+        Override filter queryset to use q instead of search.
+        """
+        queryset = super().filter_queryset(queryset)
+        search_param = self.request.query_params.get('q')
+        if search_param:
+            queryset = queryset.filter(
+                Q(name__icontains=search_param) |
+                Q(email__icontains=search_param)
+            )
+        return queryset
+
+
+class LoginViewSet(viewsets.ViewSet):
+    """
+    checks email and password and return an auth token.
+    """
+    serializer_class = AuthTokenSerializer
+
+    def create(self, request):
+        """
+        Use the ObtainAuthToken ApiView to validate and create a token.
+        """
+        return ObtainAuthToken().as_view()(request=request._request)
